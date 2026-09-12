@@ -74,6 +74,45 @@ test('建立基准后替换一层得到可替代结论，刷新后恢复对比',
   await expect(page.getByTestId('color-difference')).toHaveText('3.5');
 });
 
+test('层内容与结果矛盾的基准快照不会恢复对比展示', async ({ page }) => {
+  const layer = {
+    id: 'primary-red',
+    name: '正红 R02',
+    hex: '#D82128',
+    transmittance: 72,
+  };
+  await page.addInitScript(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        savedAt: '2026-09-12T00:00:00.000Z',
+        layers: [layer],
+        baseline: {
+          savedAt: '2026-09-12T01:00:00.000Z',
+          layers: [layer],
+          result: {
+            hex: '#00FF00',
+            rgb: [0, 255, 0],
+            transmittancePercent: 72,
+            conclusion: '可用',
+          },
+        },
+      }),
+    ],
+  );
+
+  await page.goto('/');
+  await expect(page.getByTestId('stack-layer')).toHaveCount(1);
+  await expect(page.getByTestId('baseline-swatch')).toHaveCount(0);
+  await expect(page.getByTestId('color-difference')).toHaveCount(0);
+  await expect(page.getByTestId('transmittance-difference')).toHaveCount(0);
+  await expect(page.getByTestId('comparison-verdict')).toHaveCount(0);
+  await expect(page.getByTestId('clear-baseline')).toHaveCount(0);
+  await expect(page.getByTestId('final-hex')).toHaveText('#D82128');
+});
+
 test('空方案不能设为基准，清除基准后回到单方案流程', async ({ page }) => {
   await page.goto('/');
 

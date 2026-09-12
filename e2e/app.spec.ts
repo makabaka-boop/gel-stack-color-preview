@@ -112,6 +112,35 @@ test('非法六位颜色明确报错且不覆盖 localStorage 中有效方案', 
   await expect(page.getByTestId('form-error')).toHaveCount(0);
 });
 
+test('恢复两张标识相同的色片时，只移除当前选择的一层', async ({ page }) => {
+  const duplicateLayer = {
+    id: 'duplicate-layer',
+    name: '重复标识色片',
+    hex: '#D82128',
+    transmittance: 72,
+  };
+  await page.addInitScript(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [
+      'stage-gel-precheck:latest-scheme:v1',
+      JSON.stringify({
+        version: 1,
+        savedAt: '2026-09-12T00:00:00.000Z',
+        layers: [duplicateLayer, duplicateLayer],
+      }),
+    ],
+  );
+
+  await page.goto('/');
+  const layers = page.getByTestId('stack-layer');
+  await expect(layers).toHaveCount(2);
+
+  await page.getByRole('button', { name: '移除 重复标识色片' }).first().click();
+
+  await expect(layers).toHaveCount(1);
+  await expect(layers.first()).toContainText('重复标识色片');
+});
+
 test('最多叠放五张，五张低透光率色片给出过暗结论', async ({ page }) => {
   await page.goto('/');
   const gelNames = [

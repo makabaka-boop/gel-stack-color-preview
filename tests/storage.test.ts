@@ -92,6 +92,32 @@ describe('最近一次有效方案', () => {
     expect(validRaw).not.toBeNull();
   });
 
+  it('缺少名称或标识的色片数据不会被恢复，也不会覆盖存储原文', () => {
+    const storage = new MemoryStorage();
+    saveScheme(storage, [makeLayer(1)]);
+    const validRaw = storage.getItem(STORAGE_KEY);
+
+    const brokenLayers: Array<Partial<StackLayer>> = [
+      { ...makeLayer(2), id: '' },
+      { ...makeLayer(2), id: '   ' },
+      { ...makeLayer(2), id: undefined },
+      { ...makeLayer(2), name: '' },
+      { ...makeLayer(2), name: '   ' },
+      { ...makeLayer(2), name: undefined },
+    ];
+
+    for (const brokenLayer of brokenLayers) {
+      const brokenScheme = makeScheme([brokenLayer as StackLayer]);
+      storage.setItem(STORAGE_KEY, JSON.stringify(brokenScheme));
+      expect(loadScheme(storage)).toBeNull();
+      expect(storage.getItem(STORAGE_KEY)).toBe(
+        JSON.stringify(brokenScheme),
+      );
+    }
+
+    expect(validRaw).not.toBeNull();
+  });
+
   it('损坏 JSON 或未知版本按无方案处理', () => {
     const storage = new MemoryStorage();
     storage.setItem(STORAGE_KEY, '{not-json');
@@ -173,6 +199,34 @@ describe('基准快照存储', () => {
         ...makeBaseline(2),
         result: { ...makeBaseline(2).result, conclusion: '未知' },
       },
+      (() => {
+        const baseline = makeBaseline(2);
+        return {
+          ...baseline,
+          result: { ...baseline.result, hex: '#123456' },
+        };
+      })(),
+      (() => {
+        const baseline = makeBaseline(2);
+        return {
+          ...baseline,
+          result: { ...baseline.result, rgb: [1, 2, 3] },
+        };
+      })(),
+      (() => {
+        const baseline = makeBaseline(2);
+        return {
+          ...baseline,
+          result: { ...baseline.result, transmittancePercent: 12.3 },
+        };
+      })(),
+      (() => {
+        const baseline = makeBaseline(2);
+        return {
+          ...baseline,
+          result: { ...baseline.result, conclusion: '可用' },
+        };
+      })(),
     ];
 
     for (const broken of cases) {

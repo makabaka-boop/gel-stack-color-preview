@@ -23,7 +23,7 @@ import './styles.css';
 
 type DragSource =
   | { kind: 'catalog'; gel: Gel }
-  | { kind: 'layer'; layerId: string };
+  | { kind: 'layer'; layerIndex: number };
 
 interface DragState {
   source: DragSource;
@@ -103,7 +103,7 @@ function App() {
       }
 
       const rows = Array.from(
-        stage.querySelectorAll<HTMLElement>('[data-layer-id]'),
+        stage.querySelectorAll<HTMLElement>('[data-layer-index]'),
       );
       if (rows.length === 0) return 0;
 
@@ -147,18 +147,16 @@ function App() {
         }
 
         if (current.source.kind === 'layer') {
-          const layerId = current.source.layerId;
-          const sourceIndex = currentLayers.findIndex(
-            (layer) => layer.id === layerId,
-          );
-          if (sourceIndex !== -1) {
+          const sourceIndex = current.source.layerIndex;
+          const movedLayer = currentLayers[sourceIndex];
+          if (movedLayer) {
             const nextLayers = currentLayers.filter(
-              (layer) => layer.id !== layerId,
+              (_, index) => index !== sourceIndex,
             );
             nextLayers.splice(
               Math.min(targetIndex, nextLayers.length),
               0,
-              currentLayers[sourceIndex],
+              movedLayer,
             );
             setLayers(nextLayers);
             setNotice(null);
@@ -229,7 +227,7 @@ function App() {
     const gel =
       source.kind === 'catalog'
         ? source.gel
-        : layersRef.current.find((layer) => layer.id === source.layerId);
+        : layersRef.current[source.layerIndex];
     if (!gel) return;
 
     const next: DragState = {
@@ -269,8 +267,10 @@ function App() {
     setNotice(null);
   }
 
-  function removeLayer(layerId: string) {
-    setLayers((current) => current.filter((layer) => layer.id !== layerId));
+  function removeLayer(layerIndex: number) {
+    setLayers((current) =>
+      current.filter((_, index) => index !== layerIndex),
+    );
   }
 
   function addCustomGel(event: React.FormEvent<HTMLFormElement>) {
@@ -439,14 +439,18 @@ function App() {
               </li>
             )}
             {layers.map((layer, index) => (
-              <li key={layer.id} data-layer-id={layer.id} className="layer-row">
+              <li
+                key={`${layer.id}-${index}`}
+                data-layer-index={index}
+                className="layer-row"
+              >
                 {dropIndex === index && dragging && (
                   <span className="drop-indicator" aria-hidden="true" />
                 )}
                 <div
                   className="layer-card"
                   onPointerDown={(event) =>
-                    beginDrag(event, { kind: 'layer', layerId: layer.id })
+                    beginDrag(event, { kind: 'layer', layerIndex: index })
                   }
                   data-testid="stack-layer"
                   draggable={false}
@@ -476,7 +480,7 @@ function App() {
                   type="button"
                   className="remove-button"
                   onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => removeLayer(layer.id)}
+                  onClick={() => removeLayer(index)}
                   aria-label={`移除 ${layer.name}`}
                   data-testid="remove-layer"
                 >

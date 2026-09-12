@@ -1,4 +1,4 @@
-import { calculateStack, normalizeHex } from './color';
+import { calculateStack, normalizeHex, parseTransmittance } from './color';
 import type {
   BaselineSnapshot,
   RgbValue,
@@ -14,17 +14,41 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isValidLayer(layer: unknown): layer is StackLayer {
+  if (!isRecord(layer)) {
+    return false;
+  }
+
+  if (
+    typeof layer.id !== 'string' ||
+    layer.id.trim().length === 0 ||
+    typeof layer.name !== 'string' ||
+    layer.name.trim().length === 0 ||
+    typeof layer.hex !== 'string' ||
+    typeof layer.transmittance !== 'number'
+  ) {
+    return false;
+  }
+
+  try {
+    normalizeHex(layer.hex);
+    parseTransmittance(layer.transmittance);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isValidLayers(layers: unknown): layers is StackLayer[] {
   if (!Array.isArray(layers) || layers.length < 1 || layers.length > 5) {
     return false;
   }
 
-  try {
-    calculateStack(layers as StackLayer[]);
-    return true;
-  } catch {
-    return false;
-  }
+  return layers.every(isValidLayer);
 }
 
 function isValidResult(result: unknown): result is StackResult {
@@ -62,14 +86,27 @@ function isValidResult(result: unknown): result is StackResult {
 }
 
 function isValidBaseline(baseline: unknown): baseline is BaselineSnapshot {
-  if (typeof baseline !== 'object' || baseline === null) {
+  if (!isRecord(baseline)) {
     return false;
   }
   const candidate = baseline as Partial<BaselineSnapshot>;
+
+  if (
+    typeof candidate.savedAt !== 'string' ||
+    !isValidLayers(candidate.layers) ||
+    !isValidResult(candidate.result)
+  ) {
+    return false;
+  }
+
+  const calculated = calculateStack(candidate.layers);
+  const result = candidate.result;
   return (
-    typeof candidate.savedAt === 'string' &&
-    isValidLayers(candidate.layers) &&
-    isValidResult(candidate.result)
+    normalizeHex(result.hex) === calculated.hex &&
+    result.rgb.length === calculated.rgb.length &&
+    result.rgb.every((channel, index) => channel === calculated.rgb[index]) &&
+    result.transmittancePercent === calculated.transmittancePercent &&
+    result.conclusion === calculated.conclusion
   );
 }
 
