@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { CATALOG } from './catalog';
 import {
-  calculateStack,
+  calculateLightPath,
   compareWithBaseline,
   DEFAULT_LIGHT_SOURCE,
   normalizeHex,
@@ -18,6 +18,7 @@ import type {
   BaselineSnapshot,
   Gel,
   HexColor,
+  LightPathCheckpoint,
   StackLayer,
   StackResult,
 } from './types';
@@ -75,6 +76,8 @@ function App() {
   const [hexInput, setHexInput] = useState('');
   const [transmittanceInput, setTransmittanceInput] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  // 逐层光路明细默认收起，以维持原结果区布局。
+  const [lightPathOpen, setLightPathOpen] = useState(false);
 
   const stageRef = useRef<HTMLOListElement | null>(null);
   const draggingRef = useRef<DragState | null>(null);
@@ -189,9 +192,24 @@ function App() {
     };
   }, []);
 
-  const result: StackResult | null = useMemo(() => {
-    if (layers.length === 0) return null;
-    return calculateStack(layers, lightSource);
+  // 总结果与逐层检查点在同一次状态更新中由同一份有效光源与色片派生，
+  // 拖动换序、增删色片或修改光源后两处一起重算。
+  const { result, checkpoints } = useMemo<{
+    result: StackResult | null;
+    checkpoints: LightPathCheckpoint[];
+  }>(() => {
+    if (layers.length === 0) return { result: null, checkpoints: [] };
+    const path = calculateLightPath(layers, lightSource);
+    const last = path.last;
+    return {
+      checkpoints: path.checkpoints,
+      result: {
+        hex: last.hex,
+        rgb: last.rgb,
+        transmittancePercent: last.transmittancePercent,
+        conclusion: last.conclusion,
+      },
+    };
   }, [layers, lightSource]);
 
   const comparison = useMemo(() => {
@@ -708,6 +726,111 @@ function App() {
                   个百分点为可替代，否则偏差明显。
                 </p>
               )}
+
+              <div className="light-path" data-testid="light-path">
+                <button
+                  type="button"
+                  className="disclosure-button"
+                  aria-expanded={lightPathOpen}
+                  aria-controls="light-path-panel"
+                  onClick={() => setLightPathOpen((open) => !open)}
+                  data-testid="light-path-toggle"
+                >
+                  <span className="disclosure-label">逐层光路</span>
+                  <span className="disclosure-hint">
+                    {lightPathOpen
+                      ? '收起明细'
+                      : '展开查看每经过一张色片后的累计色块、RGB 与透光率'}
+                  </span>
+                  <span
+                    className={`disclosure-arrow${lightPathOpen ? ' is-open' : ''}`}
+                    aria-hidden="true"
+                  >
+                    ▾
+                  </span>
+                </button>
+                {lightPathOpen && (
+                  <div
+                    className="light-path-panel"
+                    id="light-path-panel"
+                    data-testid="light-path-panel"
+                  >
+                    <ol className="light-path-list">
+                      <li
+                        className="light-path-origin"
+                        data-testid="light-path-origin"
+                      >
+                        <span className="checkpoint-order">光源</span>
+                        <span
+                          className="swatch-chip checkpoint-swatch"
+                          style={{ backgroundColor: lightSource }}
+                          aria-hidden="true"
+                        />
+                        <span className="checkpoint-copy">
+                          <strong>入射光源起点</strong>
+                          <small data-testid="checkpoint-origin-hex">
+                            {lightSource}
+                          </small>
+                        </span>
+                      </li>
+                      {checkpoints.map((checkpoint) => (
+                        <li
+                          key={`${checkpoint.layerId}-${checkpoint.layerOrder}`}
+                          className="light-path-checkpoint"
+                          data-testid="light-path-checkpoint"
+                          data-layer-id={checkpoint.layerId}
+                          data-layer-order={checkpoint.layerOrder}
+                        >
+                          <span className="checkpoint-order">
+                            第 {checkpoint.layerOrder} 张
+                          </span>
+                          <span
+                            className="swatch-chip checkpoint-swatch"
+                            style={{ backgroundColor: checkpoint.hex }}
+                            aria-hidden="true"
+                          />
+                          <span className="checkpoint-copy">
+                            <strong data-testid="checkpoint-name">
+                              {checkpoint.layerName}
+                            </strong>
+                            <small>
+                              <span data-testid="checkpoint-hex">
+                                {checkpoint.hex}
+                              </span>
+                              {' · '}
+                              <span data-testid="checkpoint-rgb">
+                                R {checkpoint.rgb[0]} / G {checkpoint.rgb[1]} / B{' '}
+                                {checkpoint.rgb[2]}
+                              </span>
+                            </small>
+                          </span>
+                          <span className="checkpoint-metrics">
+                            <span
+                              className="checkpoint-transmittance"
+                              data-testid="checkpoint-transmittance"
+                            >
+                              {checkpoint.transmittancePercent.toFixed(1)}%
+                            </span>
+                            <span
+                              className={`conclusion ${
+                                checkpoint.conclusion === '可用'
+                                  ? 'usable'
+                                  : 'too-dark'
+                              }`}
+                              data-testid="checkpoint-conclusion"
+                            >
+                              {checkpoint.conclusion}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="formula-note light-path-note">
+                      顺序与实际光路一致：上方靠近光源，末行即当前总结果。
+                    </p>
+                  </div>
+                )}
+              </div>
             </>
           ) : baseline ? (
             <div className="empty-result" data-testid="empty-result">

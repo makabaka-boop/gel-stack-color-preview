@@ -539,6 +539,134 @@ h3 {
   font-size: 0.82rem;
 }
 
+.light-path {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.disclosure-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  color: #f4f1e8;
+  background: rgba(255, 255, 255, 0.045);
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.disclosure-button:hover {
+  border-color: rgba(240, 182, 111, 0.55);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.disclosure-label {
+  flex: 0 0 auto;
+  font-weight: 750;
+  color: #f0b66f;
+}
+
+.disclosure-hint {
+  flex: 1 1 auto;
+  color: #9ca3b3;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disclosure-arrow {
+  flex: 0 0 auto;
+  color: #f0b66f;
+  transition: transform 160ms ease;
+}
+
+.disclosure-arrow.is-open {
+  transform: rotate(180deg);
+}
+
+.light-path-panel {
+  margin-top: 12px;
+}
+
+.light-path-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.light-path-origin,
+.light-path-checkpoint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.light-path-origin {
+  border-style: dashed;
+  background: rgba(240, 182, 111, 0.06);
+}
+
+.checkpoint-order {
+  flex: 0 0 auto;
+  min-width: 52px;
+  color: #f0b66f;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.checkpoint-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.checkpoint-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+}
+
+.checkpoint-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+}
+
+.checkpoint-copy small {
+  color: #9fa7b7;
+  font-size: 0.78rem;
+}
+
+.checkpoint-metrics {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.checkpoint-transmittance {
+  font-weight: 750;
+  font-size: 0.9rem;
+}
+
+.light-path-note {
+  margin-bottom: 0;
+}
+
 .storage-note {
   margin: 16px 0 0;
   word-break: break-all;

@@ -2,6 +2,7 @@ import { asHexColor, asTransmittance } from './types';
 import type {
   HexColor,
   LabValue,
+  LightPathCheckpoint,
   RgbValue,
   SchemeComparison,
   StackLayer,
@@ -120,14 +121,60 @@ export function calculateStack(
   layers: readonly StackLayer[],
   lightSource: HexColor = DEFAULT_LIGHT_SOURCE,
 ): StackResult {
-  const transmittancePercent = calculateTotalTransmittance(layers);
-  const color = stackColor(layers, lightSource);
-
+  // 总结果直接取逐层光路的最后一个检查点，保证两处展示永远一致。
+  const last = calculateLightPath(layers, lightSource).last;
   return {
-    ...color,
-    transmittancePercent,
-    conclusion: transmittancePercent >= 20.0 ? '可用' : '过暗',
+    hex: last.hex,
+    rgb: last.rgb,
+    transmittancePercent: last.transmittancePercent,
+    conclusion: last.conclusion,
   };
+}
+
+/**
+ * 从当前光源开始，每经过一张色片生成一个检查点：累计色块、RGB、
+ * 累计透光率和明暗结论。检查点顺序与实际光路（光源侧 → 输出侧）一致，
+ * 复用与 {@link calculateStack} 完全相同的线性叠色与透光率规则；
+ * 最后一个检查点即总结果。返回与色片层一一对应的数组。
+ */
+export function calculateLightPath(
+  layers: readonly StackLayer[],
+  lightSource: HexColor = DEFAULT_LIGHT_SOURCE,
+): { checkpoints: LightPathCheckpoint[]; last: LightPathCheckpoint } {
+  validateLayers(layers);
+
+  // 光源按同一 sRGB 分段公式线性化，作为叠色链的起点。
+  const linear = hexToRgb(normalizeHex(lightSource)).map((channel) =>
+    srgbToLinear(channel),
+  );
+
+  let transmittanceFraction = 1;
+  const checkpoints: LightPathCheckpoint[] = layers.map((layer, index) => {
+    const rgb = hexToRgb(normalizeHex(layer.hex));
+    for (let channel = 0; channel < 3; channel += 1) {
+      linear[channel] *= srgbToLinear(rgb[channel]);
+    }
+
+    transmittanceFraction *= parseTransmittance(layer.transmittance) / 100;
+    const transmittancePercent = roundToSingleDecimal(
+      transmittanceFraction * 100,
+    );
+    const stackedRgb = linear.map((value) =>
+      Math.round(linearToSrgbChannel(value) * 255),
+    ) as RgbValue;
+
+    return {
+      layerId: layer.id,
+      layerName: layer.name,
+      layerOrder: index + 1,
+      hex: rgbToHex(stackedRgb),
+      rgb: stackedRgb,
+      transmittancePercent,
+      conclusion: transmittancePercent >= 20.0 ? '可用' : '过暗',
+    };
+  });
+
+  return { checkpoints, last: checkpoints[checkpoints.length - 1] };
 }
 
 const D65_WHITE = { x: 0.95047, y: 1, z: 1.08883 } as const;

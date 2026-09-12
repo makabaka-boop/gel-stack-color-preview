@@ -14,6 +14,17 @@ export interface StackResult {
   conclusion: '可用' | '过暗';
 }
 
+/**
+ * 逐层光路上的单个检查点：从光源起，经过该层（含）之后的累计颜色、
+ * 透光率与明暗结论。与色片层一一对应，末个检查点等于总结果。
+ */
+export interface LightPathCheckpoint extends StackResult {
+  layerId: string;
+  layerName: string;
+  /** 该层在实际光路中的序号，从 1 开始（1 为最靠近光源的一张）。 */
+  layerOrder: number;
+}
+
 export interface LabValue {
   l: number;
   a: number;
