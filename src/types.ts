@@ -5,7 +5,13 @@ export interface Gel {
   transmittance: Transmittance;
 }
 
-export type StackLayer = Gel;
+export interface StackLayer extends Gel {
+  /**
+   * 临时旁路：该层不参与颜色与透光率计算，但仍占据原叠放位置与顺序，
+   * 再次启用后恢复参与；旧记录没有该字段时视为正常参与。
+   */
+  bypassed?: boolean;
+}
 
 export interface StackResult {
   hex: HexColor;
@@ -17,12 +23,15 @@ export interface StackResult {
 /**
  * 逐层光路上的单个检查点：从光源起，经过该层（含）之后的累计颜色、
  * 透光率与明暗结论。与色片层一一对应，末个检查点等于总结果。
+ * 旁路层仍占据原检查点：participating 为 false，数值继承上一检查点。
  */
 export interface LightPathCheckpoint extends StackResult {
   layerId: string;
   layerName: string;
   /** 该层在实际光路中的序号，从 1 开始（1 为最靠近光源的一张）。 */
   layerOrder: number;
+  /** 该层本次是否参与计算；旁路层为 false。 */
+  participating: boolean;
 }
 
 export interface LabValue {

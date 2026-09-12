@@ -40,6 +40,11 @@ function isValidLayer(layer: unknown): layer is StackLayer {
     return false;
   }
 
+  // 旁路是可选属性：缺失视为正常参与；存在但非布尔时整层视为损坏。
+  if (layer.bypassed !== undefined && typeof layer.bypassed !== 'boolean') {
+    return false;
+  }
+
   try {
     normalizeHex(layer.hex);
     parseTransmittance(layer.transmittance);

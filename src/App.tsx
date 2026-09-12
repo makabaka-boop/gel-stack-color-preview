@@ -40,6 +40,10 @@ interface DragState {
 
 const DRAG_ACTIVATION_DISTANCE = 5;
 
+// 非法光源输入期间允许调整预览，但不覆盖最近一次有效方案。
+const UNSAVED_NOTICE =
+  '光源颜色未通过校验：本次调整仅更新预览，尚未写入最近一次有效方案。';
+
 function createLayer(gel: Gel): StackLayer {
   return {
     ...gel,
@@ -93,12 +97,17 @@ function App() {
   dropIndexRef.current = dropIndex;
 
   useEffect(() => {
-    if (lightError) return;
+    if (lightError) {
+      setNotice(UNSAVED_NOTICE);
+      return;
+    }
 
     const storage = getBrowserStorage();
     if (!storage) return;
     try {
       saveScheme(storage, layers, undefined, baseline, lightSource);
+      // 恢复合法光源后方案已落盘，撤掉此前的未保存提示。
+      setNotice((current) => (current === UNSAVED_NOTICE ? null : current));
     } catch {
       setNotice('浏览器无法写入 localStorage，本次方案暂时不能自动保存。');
     }
@@ -330,6 +339,22 @@ function App() {
     setLayers((current) =>
       current.filter((_, index) => index !== layerIndex),
     );
+  }
+
+  // 旁路只切换该层的参与状态：不删除色片、不改变顺序，再次启用即恢复。
+  function toggleLayerBypass(layerIndex: number) {
+    setLayers((current) =>
+      current.map((layer, index) => {
+        if (index !== layerIndex) return layer;
+        if (layer.bypassed) {
+          const next = { ...layer };
+          delete next.bypassed;
+          return next;
+        }
+        return { ...layer, bypassed: true };
+      }),
+    );
+    setNotice(null);
   }
 
   function handleLightInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -564,7 +589,7 @@ function App() {
                   <span className="drop-indicator" aria-hidden="true" />
                 )}
                 <div
-                  className="layer-card"
+                  className={`layer-card${layer.bypassed ? ' is-bypassed' : ''}`}
                   onPointerDown={(event) =>
                     beginDrag(event, { kind: 'layer', layerIndex: index })
                   }
@@ -589,8 +614,20 @@ function App() {
                     <strong>{layer.name}</strong>
                     <small>
                       {layer.hex} · 单层 {layer.transmittance}%
+                      {layer.bypassed ? ' · 已旁路' : ''}
                     </small>
                   </span>
+                  <button
+                    type="button"
+                    className="mini-button bypass-button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => toggleLayerBypass(index)}
+                    aria-pressed={layer.bypassed === true}
+                    aria-label={`${layer.bypassed ? '启用' : '旁路'} ${layer.name}`}
+                    data-testid="toggle-bypass"
+                  >
+                    {layer.bypassed ? '启用' : '旁路'}
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -807,10 +844,13 @@ function App() {
                       {checkpoints.map((checkpoint) => (
                         <li
                           key={`${checkpoint.layerId}-${checkpoint.layerOrder}`}
-                          className="light-path-checkpoint"
+                          className={`light-path-checkpoint${
+                            checkpoint.participating ? '' : ' is-bypassed'
+                          }`}
                           data-testid="light-path-checkpoint"
                           data-layer-id={checkpoint.layerId}
                           data-layer-order={checkpoint.layerOrder}
+                          data-participating={checkpoint.participating}
                         >
                           <span className="checkpoint-order">
                             第 {checkpoint.layerOrder} 张
@@ -842,22 +882,31 @@ function App() {
                             >
                               {checkpoint.transmittancePercent.toFixed(1)}%
                             </span>
-                            <span
-                              className={`conclusion ${
-                                checkpoint.conclusion === '可用'
-                                  ? 'usable'
-                                  : 'too-dark'
-                              }`}
-                              data-testid="checkpoint-conclusion"
-                            >
-                              {checkpoint.conclusion}
-                            </span>
+                            {checkpoint.participating ? (
+                              <span
+                                className={`conclusion ${
+                                  checkpoint.conclusion === '可用'
+                                    ? 'usable'
+                                    : 'too-dark'
+                                }`}
+                                data-testid="checkpoint-conclusion"
+                              >
+                                {checkpoint.conclusion}
+                              </span>
+                            ) : (
+                              <span
+                                className="conclusion bypassed"
+                                data-testid="checkpoint-bypassed"
+                              >
+                                未参与
+                              </span>
+                            )}
                           </span>
                         </li>
                       ))}
                     </ol>
                     <p className="formula-note light-path-note">
-                      顺序与实际光路一致：上方靠近光源，末行即当前总结果。
+                      顺序与实际光路一致：上方靠近光源，末行即当前总结果；旁路层保留原位并标明未参与，数值继承上一检查点。
                     </p>
                   </div>
                 )}

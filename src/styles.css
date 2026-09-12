@@ -378,6 +378,25 @@ h3 {
   border-color: rgba(240, 182, 111, 0.55);
 }
 
+.layer-card.is-bypassed {
+  border-style: dashed;
+  opacity: 0.58;
+}
+
+.layer-card.is-bypassed .swatch-chip {
+  filter: grayscale(0.45);
+}
+
+.bypass-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.bypass-button[aria-pressed='true'] {
+  background: rgba(240, 182, 111, 0.28);
+  color: #ffe0a8;
+}
+
 .drag-handle {
   flex: 0 0 auto;
   color: #858da0;
@@ -617,6 +636,16 @@ h3 {
 .light-path-origin {
   border-style: dashed;
   background: rgba(240, 182, 111, 0.06);
+}
+
+.light-path-checkpoint.is-bypassed {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.conclusion.bypassed {
+  color: #3d3a33;
+  background: #c9c4b8;
 }
 
 .checkpoint-order {

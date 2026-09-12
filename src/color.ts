@@ -83,7 +83,10 @@ export function calculateTotalTransmittance(
 ): number {
   validateLayers(layers);
   const fraction = layers.reduce(
-    (product, layer) => product * (parseTransmittance(layer.transmittance) / 100),
+    (product, layer) =>
+      layer.bypassed
+        ? product
+        : product * (parseTransmittance(layer.transmittance) / 100),
     1,
   );
   return roundToSingleDecimal(fraction * 100);
@@ -104,6 +107,7 @@ export function stackColor(
   );
 
   for (const layer of layers) {
+    if (layer.bypassed) continue;
     const rgb = hexToRgb(normalizeHex(layer.hex));
     for (let channel = 0; channel < 3; channel += 1) {
       linear[channel] *= srgbToLinear(rgb[channel]);
@@ -136,6 +140,9 @@ export function calculateStack(
  * 累计透光率和明暗结论。检查点顺序与实际光路（光源侧 → 输出侧）一致，
  * 复用与 {@link calculateStack} 完全相同的线性叠色与透光率规则；
  * 最后一个检查点即总结果。返回与色片层一一对应的数组。
+ * 旁路层不参与乘法：其检查点标明未参与，颜色、透光率与结论继承上一
+ * 检查点（首张旁路时即光源本身与 100.0%）；全部旁路时总结果即光源
+ * 颜色与 100.0% 透光率。
  */
 export function calculateLightPath(
   layers: readonly StackLayer[],
@@ -150,12 +157,15 @@ export function calculateLightPath(
 
   let transmittanceFraction = 1;
   const checkpoints: LightPathCheckpoint[] = layers.map((layer, index) => {
-    const rgb = hexToRgb(normalizeHex(layer.hex));
-    for (let channel = 0; channel < 3; channel += 1) {
-      linear[channel] *= srgbToLinear(rgb[channel]);
+    const participating = layer.bypassed !== true;
+    if (participating) {
+      const rgb = hexToRgb(normalizeHex(layer.hex));
+      for (let channel = 0; channel < 3; channel += 1) {
+        linear[channel] *= srgbToLinear(rgb[channel]);
+      }
+      transmittanceFraction *= parseTransmittance(layer.transmittance) / 100;
     }
 
-    transmittanceFraction *= parseTransmittance(layer.transmittance) / 100;
     const transmittancePercent = roundToSingleDecimal(
       transmittanceFraction * 100,
     );
@@ -167,6 +177,7 @@ export function calculateLightPath(
       layerId: layer.id,
       layerName: layer.name,
       layerOrder: index + 1,
+      participating,
       hex: rgbToHex(stackedRgb),
       rgb: stackedRgb,
       transmittancePercent,
