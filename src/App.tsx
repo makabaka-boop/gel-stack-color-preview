@@ -30,10 +30,15 @@ type DragSource =
 
 interface DragState {
   source: DragSource;
+  pointerId: number;
+  start: { x: number; y: number };
   pointer: { x: number; y: number };
   label: string;
   hex: string;
+  started: boolean;
 }
+
+const DRAG_ACTIVATION_DISTANCE = 5;
 
 function createLayer(gel: Gel): StackLayer {
   return {
@@ -88,6 +93,8 @@ function App() {
   dropIndexRef.current = dropIndex;
 
   useEffect(() => {
+    if (lightError) return;
+
     const storage = getBrowserStorage();
     if (!storage) return;
     try {
@@ -95,7 +102,7 @@ function App() {
     } catch {
       setNotice('浏览器无法写入 localStorage，本次方案暂时不能自动保存。');
     }
-  }, [layers, baseline, lightSource]);
+  }, [layers, baseline, lightSource, lightError]);
 
   useEffect(() => {
     document.body.classList.toggle('is-dragging', dragging !== null);
@@ -130,23 +137,53 @@ function App() {
 
     function handlePointerMove(event: PointerEvent) {
       const current = draggingRef.current;
-      if (!current) return;
+      if (!current || event.pointerId !== current.pointerId) return;
+
+      if (!current.started) {
+        const distance = Math.hypot(
+          event.clientX - current.start.x,
+          event.clientY - current.start.y,
+        );
+        if (distance < DRAG_ACTIVATION_DISTANCE) return;
+
+        current.started = true;
+        const target = event.target;
+        if (target instanceof Element) {
+          try {
+            target.setPointerCapture(event.pointerId);
+          } catch {
+            // 某些已移除的 DOM 节点可能无法捕获；window 事件仍可完成本次手势。
+          }
+        }
+      }
+
       event.preventDefault();
       const nextIndex = resolveStageIndex(event.clientY);
       dropIndexRef.current = nextIndex;
-      setDropIndex(nextIndex);
-      setDragging({
+      const next: DragState = {
         ...current,
         pointer: { x: event.clientX, y: event.clientY },
-      });
+      };
+      draggingRef.current = next;
+      setDropIndex(nextIndex);
+      setDragging(next);
     }
 
-    function finishDrag() {
+    function clearDrag() {
+      draggingRef.current = null;
+      dropIndexRef.current = null;
+      setDragging(null);
+      setDropIndex(null);
+    }
+
+    function finishDrag(canceled: boolean) {
       const current = draggingRef.current;
       const targetIndex = dropIndexRef.current;
       const currentLayers = layersRef.current;
 
-      if (current && targetIndex !== null) {
+      // 普通松开且确实越过拖动阈值、落点也在叠放区时才提交；
+      // pointercancel（浏览器/设备接管手势）只清理临时状态，不改层次。
+      if (current?.started && !canceled && targetIndex !== null) {
         if (current.source.kind === 'catalog') {
           if (currentLayers.length >= 5) {
             setNotice('预检台最多只能叠放五张色片。');
@@ -176,19 +213,28 @@ function App() {
         }
       }
 
-      draggingRef.current = null;
-      dropIndexRef.current = null;
-      setDragging(null);
-      setDropIndex(null);
+      clearDrag();
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      const current = draggingRef.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      finishDrag(false);
+    }
+
+    function handlePointerCancel(event: PointerEvent) {
+      const current = draggingRef.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      finishDrag(true);
     }
 
     window.addEventListener('pointermove', handlePointerMove, { passive: false });
-    window.addEventListener('pointerup', finishDrag);
-    window.addEventListener('pointercancel', finishDrag);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', finishDrag);
-      window.removeEventListener('pointercancel', finishDrag);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
     };
   }, []);
 
@@ -248,7 +294,7 @@ function App() {
     event: ReactPointerEvent<HTMLElement>,
     source: DragSource,
   ) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || draggingRef.current) return;
     event.preventDefault();
     window.getSelection()?.removeAllRanges();
 
@@ -258,32 +304,17 @@ function App() {
         : layersRef.current[source.layerIndex];
     if (!gel) return;
 
+    // pointerdown 只记录手势；指针移动超过阈值后才视为拖放，避免普通点击改序。
     const next: DragState = {
       source,
+      pointerId: event.pointerId,
+      start: { x: event.clientX, y: event.clientY },
       pointer: { x: event.clientX, y: event.clientY },
       label: gel.name,
       hex: gel.hex,
+      started: false,
     };
     draggingRef.current = next;
-    dropIndexRef.current = resolveStageIndexFromPoint(event.clientY);
-    setDropIndex(dropIndexRef.current);
-    setDragging(next);
-  }
-
-  function resolveStageIndexFromPoint(clientY: number): number | null {
-    const stage = stageRef.current;
-    if (!stage) return null;
-    const rect = stage.getBoundingClientRect();
-    if (clientY < rect.top - 12 || clientY > rect.bottom + 12) return null;
-    const rows = Array.from(
-      stage.querySelectorAll<HTMLElement>('[data-layer-id]'),
-    );
-    if (rows.length === 0) return 0;
-    for (let index = 0; index < rows.length; index += 1) {
-      const rowRect = rows[index].getBoundingClientRect();
-      if (clientY < rowRect.top + rowRect.height / 2) return index;
-    }
-    return rows.length;
   }
 
   function appendGel(gel: Gel) {
