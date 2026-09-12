@@ -1,6 +1,12 @@
-import { calculateStack, normalizeHex, parseTransmittance } from './color';
+import {
+  calculateStack,
+  DEFAULT_LIGHT_SOURCE,
+  normalizeHex,
+  parseTransmittance,
+} from './color';
 import type {
   BaselineSnapshot,
+  HexColor,
   RgbValue,
   StackLayer,
   StackResult,
@@ -99,7 +105,20 @@ function isValidBaseline(baseline: unknown): baseline is BaselineSnapshot {
     return false;
   }
 
-  const calculated = calculateStack(candidate.layers);
+  // 可选光源字段：缺失按白光处理；存在但非法时整个基准视为损坏。
+  let lightSource: HexColor = DEFAULT_LIGHT_SOURCE;
+  if (candidate.lightSource !== undefined) {
+    if (typeof candidate.lightSource !== 'string') {
+      return false;
+    }
+    try {
+      lightSource = normalizeHex(candidate.lightSource);
+    } catch {
+      return false;
+    }
+  }
+
+  const calculated = calculateStack(candidate.layers, lightSource);
   const result = candidate.result;
   return (
     normalizeHex(result.hex) === calculated.hex &&
@@ -111,7 +130,7 @@ function isValidBaseline(baseline: unknown): baseline is BaselineSnapshot {
 }
 
 function cloneBaseline(baseline: BaselineSnapshot): BaselineSnapshot {
-  return {
+  const clone: BaselineSnapshot = {
     savedAt: baseline.savedAt,
     layers: baseline.layers.map((layer) => ({ ...layer })),
     result: {
@@ -119,6 +138,22 @@ function cloneBaseline(baseline: BaselineSnapshot): BaselineSnapshot {
       rgb: [...baseline.result.rgb] as RgbValue,
     },
   };
+  if (baseline.lightSource !== undefined) {
+    clone.lightSource = normalizeHex(baseline.lightSource);
+  }
+  return clone;
+}
+
+// 方案级光源是可选字段：旧记录没有它，按白光处理；字段损坏时仅忽略该字段。
+function parseStoredLightSource(value: unknown): HexColor | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  try {
+    return normalizeHex(value);
+  } catch {
+    return undefined;
+  }
 }
 
 export function loadScheme(storage: StorageLike): StoredScheme | null {
@@ -142,6 +177,10 @@ export function loadScheme(storage: StorageLike): StoredScheme | null {
       savedAt: parsed.savedAt,
       layers: parsed.layers,
     };
+    const lightSource = parseStoredLightSource(parsed.lightSource);
+    if (lightSource) {
+      scheme.lightSource = lightSource;
+    }
     // 旧数据没有 baseline 字段；损坏或越界的基准只被忽略，不影响方案恢复。
     if (isValidBaseline(parsed.baseline)) {
       scheme.baseline = parsed.baseline;
@@ -157,6 +196,7 @@ export function saveScheme(
   layers: readonly StackLayer[],
   savedAt = new Date().toISOString(),
   baseline: BaselineSnapshot | null = null,
+  lightSource: HexColor | null = null,
 ): StoredScheme | null {
   if (!isValidLayers(layers)) {
     return null;
@@ -167,6 +207,9 @@ export function saveScheme(
     savedAt,
     layers: layers.map((layer) => ({ ...layer })),
   };
+  if (lightSource) {
+    scheme.lightSource = normalizeHex(lightSource);
+  }
   if (baseline && isValidBaseline(baseline)) {
     scheme.baseline = cloneBaseline(baseline);
   }

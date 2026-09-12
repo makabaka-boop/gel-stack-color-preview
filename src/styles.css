@@ -276,6 +276,53 @@ h3 {
   background: rgba(255, 255, 255, 0.22);
 }
 
+.light-control {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.light-control .light-swatch {
+  margin-bottom: 2px;
+}
+
+.light-field {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 6px;
+  color: #c8ccda;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.light-field input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+  padding: 9px 11px;
+  color: #f8fafc;
+  background: #111722;
+  outline: none;
+}
+
+.light-field input:focus {
+  border-color: #f0b66f;
+  box-shadow: 0 0 0 3px rgba(240, 182, 111, 0.14);
+}
+
+.light-control .mini-button {
+  margin-bottom: 2px;
+}
+
+.light-error {
+  margin: -6px 0 10px;
+}
+
 .stage {
   display: grid;
   gap: 10px;

@@ -23,6 +23,8 @@ export interface LabValue {
 export interface BaselineSnapshot {
   savedAt: string;
   layers: StackLayer[];
+  /** 设置基准时的入射光源；旧快照没有该字段，按白光处理。 */
+  lightSource?: HexColor;
   result: StackResult;
 }
 
@@ -42,6 +44,8 @@ export interface StoredScheme {
   version: 1;
   savedAt: string;
   layers: StackLayer[];
+  /** 入射光源颜色；旧记录没有该字段，按白光处理。 */
+  lightSource?: HexColor;
   baseline?: BaselineSnapshot;
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateStack,
   calculateTotalTransmittance,
+  DEFAULT_LIGHT_SOURCE,
   hexToRgb,
   linearToSrgbChannel,
   normalizeHex,
@@ -108,6 +109,75 @@ describe('多层颜色计算', () => {
     expect(() =>
       stackColor(Array.from({ length: 6 }, () => layer('#FFFFFF', 1))),
     ).toThrow(/一至五张/);
+  });
+});
+
+describe('有色入射光源', () => {
+  it('缺省光源与显式白光完全等价', () => {
+    expect(DEFAULT_LIGHT_SOURCE).toBe('#FFFFFF');
+
+    const layers = [layer('#D82128', 72), layer('#F26322', 68)];
+    const implicitResult = calculateStack(layers);
+    const explicitWhite = calculateStack(layers, asHexColor('#FFFFFF'));
+    expect(explicitWhite).toEqual(implicitResult);
+    expect(implicitResult.hex).toBe('#CD0601');
+    expect(implicitResult.rgb).toEqual([205, 6, 1]);
+    expect(stackColor(layers, asHexColor('#FFFFFF'))).toEqual(
+      stackColor(layers),
+    );
+  });
+
+  it('光源线性化后与各层逐通道相乘（固定样例）', () => {
+    const layers = [layer('#D82128', 72), layer('#F26322', 68)];
+
+    expect(stackColor(layers, asHexColor('#FF0000'))).toEqual({
+      hex: '#CD0000',
+      rgb: [205, 0, 0],
+    });
+    expect(stackColor(layers, asHexColor('#A0C8FF'))).toEqual({
+      hex: '#800401',
+      rgb: [128, 4, 1],
+    });
+    expect(stackColor([layer('#D82128', 72)], asHexColor('#123456'))).toEqual({
+      hex: '#0D0207',
+      rgb: [13, 2, 7],
+    });
+  });
+
+  it('白色色片不改变光源颜色，黑色色片吸收全部通道', () => {
+    expect(stackColor([layer('#FFFFFF', 100)], asHexColor('#123456')).hex).toBe(
+      '#123456',
+    );
+    expect(
+      stackColor([layer('#000000', 100)], asHexColor('#A0C8FF')).hex,
+    ).toBe('#000000');
+  });
+
+  it('透光率与明暗结论只由色片决定，不随光源变化', () => {
+    const layers = [layer('#D82128', 72), layer('#F26322', 68)];
+    for (const light of ['#FFFFFF', '#FF0000', '#123456']) {
+      const result = calculateStack(layers, asHexColor(light));
+      expect(result.transmittancePercent).toBe(49);
+      expect(result.conclusion).toBe('可用');
+    }
+
+    const darkLayers = [
+      layer('#FFFFFF', 60),
+      layer('#FFFFFF', 40),
+      layer('#FFFFFF', 80),
+    ];
+    const darkUnderColor = calculateStack(darkLayers, asHexColor('#FF0000'));
+    expect(darkUnderColor.transmittancePercent).toBe(19.2);
+    expect(darkUnderColor.conclusion).toBe('过暗');
+  });
+
+  it('非法六位光源颜色按同一规则拒绝', () => {
+    expect(() =>
+      stackColor([layer('#FFFFFF', 100)], asHexColor('#BADHEX')),
+    ).toThrow(/合法六位十六进制颜色/);
+    expect(() =>
+      calculateStack([layer('#FFFFFF', 100)], asHexColor('#FFF')),
+    ).toThrow(/合法六位十六进制颜色/);
   });
 });
 

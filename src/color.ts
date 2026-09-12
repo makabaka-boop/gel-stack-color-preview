@@ -11,6 +11,8 @@ import type {
 
 const HEX_PATTERN = /^#?[0-9a-fA-F]{6}$/;
 
+export const DEFAULT_LIGHT_SOURCE = asHexColor('#FFFFFF');
+
 export function normalizeHex(value: string): HexColor {
   const normalized = value.trim();
   if (!HEX_PATTERN.test(normalized)) {
@@ -86,17 +88,21 @@ export function calculateTotalTransmittance(
   return roundToSingleDecimal(fraction * 100);
 }
 
-export function stackColor(layers: readonly StackLayer[]): {
+export function stackColor(
+  layers: readonly StackLayer[],
+  lightSource: HexColor = DEFAULT_LIGHT_SOURCE,
+): {
   hex: HexColor;
   rgb: RgbValue;
 } {
   validateLayers(layers);
 
-  const linear = hexToRgb(normalizeHex(layers[0].hex)).map((channel) =>
+  // 光源按同一 sRGB 分段公式线性化，作为叠色链的起点。
+  const linear = hexToRgb(normalizeHex(lightSource)).map((channel) =>
     srgbToLinear(channel),
   );
 
-  for (const layer of layers.slice(1)) {
+  for (const layer of layers) {
     const rgb = hexToRgb(normalizeHex(layer.hex));
     for (let channel = 0; channel < 3; channel += 1) {
       linear[channel] *= srgbToLinear(rgb[channel]);
@@ -110,9 +116,12 @@ export function stackColor(layers: readonly StackLayer[]): {
   return { hex: rgbToHex(rgb), rgb };
 }
 
-export function calculateStack(layers: readonly StackLayer[]): StackResult {
+export function calculateStack(
+  layers: readonly StackLayer[],
+  lightSource: HexColor = DEFAULT_LIGHT_SOURCE,
+): StackResult {
   const transmittancePercent = calculateTotalTransmittance(layers);
-  const color = stackColor(layers);
+  const color = stackColor(layers, lightSource);
 
   return {
     ...color,

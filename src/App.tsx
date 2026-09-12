@@ -4,6 +4,7 @@ import { CATALOG } from './catalog';
 import {
   calculateStack,
   compareWithBaseline,
+  DEFAULT_LIGHT_SOURCE,
   normalizeHex,
   parseTransmittance,
 } from './color';
@@ -16,6 +17,7 @@ import {
 import type {
   BaselineSnapshot,
   Gel,
+  HexColor,
   StackLayer,
   StackResult,
 } from './types';
@@ -59,6 +61,13 @@ function App() {
   const [baseline, setBaseline] = useState<BaselineSnapshot | null>(
     () => initialScheme?.baseline ?? null,
   );
+  const [lightSource, setLightSource] = useState<HexColor>(
+    () => initialScheme?.lightSource ?? DEFAULT_LIGHT_SOURCE,
+  );
+  const [lightInput, setLightInput] = useState<string>(
+    () => initialScheme?.lightSource ?? DEFAULT_LIGHT_SOURCE,
+  );
+  const [lightError, setLightError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -79,11 +88,11 @@ function App() {
     const storage = getBrowserStorage();
     if (!storage) return;
     try {
-      saveScheme(storage, layers, undefined, baseline);
+      saveScheme(storage, layers, undefined, baseline, lightSource);
     } catch {
       setNotice('浏览器无法写入 localStorage，本次方案暂时不能自动保存。');
     }
-  }, [layers, baseline]);
+  }, [layers, baseline, lightSource]);
 
   useEffect(() => {
     document.body.classList.toggle('is-dragging', dragging !== null);
@@ -182,8 +191,8 @@ function App() {
 
   const result: StackResult | null = useMemo(() => {
     if (layers.length === 0) return null;
-    return calculateStack(layers);
-  }, [layers]);
+    return calculateStack(layers, lightSource);
+  }, [layers, lightSource]);
 
   const comparison = useMemo(() => {
     if (!baseline || !result) return null;
@@ -198,9 +207,10 @@ function App() {
     setBaseline({
       savedAt: new Date().toISOString(),
       layers: layers.map((layer) => ({ ...layer })),
+      lightSource,
       result,
     });
-    setNotice('已设为基准，继续调整一至五层色片即可查看对比。');
+    setNotice('已设为基准，继续调整光源或一至五层色片即可查看对比。');
   }
 
   function handleClearBaseline() {
@@ -271,6 +281,27 @@ function App() {
     setLayers((current) =>
       current.filter((_, index) => index !== layerIndex),
     );
+  }
+
+  function handleLightInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const value = event.target.value;
+    setLightInput(value);
+    try {
+      // 只有合法六位颜色才进入计算与本地记录。
+      setLightSource(normalizeHex(value));
+      setLightError(null);
+    } catch (error) {
+      // 非法输入只提示格式问题，沿用上一次有效颜色。
+      setLightError(
+        error instanceof Error ? error.message : '光源颜色格式不合法。',
+      );
+    }
+  }
+
+  function handleResetLight() {
+    setLightInput(DEFAULT_LIGHT_SOURCE);
+    setLightSource(DEFAULT_LIGHT_SOURCE);
+    setLightError(null);
   }
 
   function addCustomGel(event: React.FormEvent<HTMLFormElement>) {
@@ -410,7 +441,7 @@ function App() {
           <div className="panel-heading horizontal-heading">
             <div>
               <h2 id="stage-title">实际叠放次序</h2>
-              <p>上方靠近光源，下方为输出侧；拖动色片可调整顺序。</p>
+              <p>先设定入射光源，再拖入色片；上方靠近光源，下方为输出侧。</p>
             </div>
             {layers.length > 0 && (
               <button
@@ -422,6 +453,42 @@ function App() {
               </button>
             )}
           </div>
+
+          <div className="light-control" data-testid="light-control">
+            <span
+              className="swatch-chip light-swatch"
+              style={{ backgroundColor: lightSource }}
+              aria-hidden="true"
+              data-testid="light-swatch"
+            />
+            <label className="light-field">
+              入射光源（六位十六进制 sRGB）
+              <input
+                data-testid="light-input"
+                value={lightInput}
+                onChange={handleLightInputChange}
+                placeholder="#FFFFFF"
+                aria-invalid={lightError ? true : undefined}
+              />
+            </label>
+            <button
+              type="button"
+              className="mini-button"
+              onClick={handleResetLight}
+              data-testid="reset-light"
+            >
+              恢复白光
+            </button>
+          </div>
+          {lightError && (
+            <p
+              className="form-error light-error"
+              role="alert"
+              data-testid="light-error"
+            >
+              {lightError}
+            </p>
+          )}
 
           <ol
             ref={stageRef}
@@ -508,7 +575,7 @@ function App() {
           <div className="panel-heading horizontal-heading">
             <div>
               <h2 id="result-title">预检结果</h2>
-              <p>按题目指定 sRGB 线性空间逐通道计算</p>
+              <p>光源经 sRGB 线性化后与各层逐通道相乘</p>
             </div>
             <div className="baseline-actions">
               <button
@@ -567,6 +634,10 @@ function App() {
                 />
               )}
               <dl className="result-list">
+                <div>
+                  <dt>入射光源</dt>
+                  <dd data-testid="light-source-hex">{lightSource}</dd>
+                </div>
                 <div>
                   <dt>最终颜色</dt>
                   <dd data-testid="final-hex">{result.hex}</dd>

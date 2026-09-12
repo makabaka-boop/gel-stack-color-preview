@@ -131,6 +131,147 @@ describe('最近一次有效方案', () => {
   });
 });
 
+describe('光源颜色存储', () => {
+  it('光源随最近有效方案写入并恢复', () => {
+    const storage = new MemoryStorage();
+    const layers = [makeLayer(1), makeLayer(2)];
+    const saved = saveScheme(
+      storage,
+      layers,
+      '2026-09-12T00:00:00.000Z',
+      null,
+      asHexColor('#A0C8FF'),
+    );
+
+    expect(saved?.lightSource).toBe('#A0C8FF');
+    const loaded = loadScheme(storage);
+    expect(loaded?.layers).toEqual(layers);
+    expect(loaded?.lightSource).toBe('#A0C8FF');
+  });
+
+  it('光源保存前规范化为大写带井号形式', () => {
+    const storage = new MemoryStorage();
+    saveScheme(
+      storage,
+      [makeLayer(1)],
+      '2026-09-12T00:00:00.000Z',
+      null,
+      asHexColor('a0c8ff'),
+    );
+    expect(loadScheme(storage)?.lightSource).toBe('#A0C8FF');
+  });
+
+  it('不传光源时存储原文不含 lightSource 字段', () => {
+    const storage = new MemoryStorage();
+    saveScheme(storage, [makeLayer(1)]);
+
+    const parsed = JSON.parse(storage.getItem(STORAGE_KEY)!);
+    expect('lightSource' in parsed).toBe(false);
+  });
+
+  it('旧记录没有光源字段时按白光处理（字段缺省）', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(STORAGE_KEY, JSON.stringify(makeScheme([makeLayer(1)])));
+
+    const loaded = loadScheme(storage);
+    expect(loaded?.layers).toHaveLength(1);
+    expect(loaded?.lightSource).toBeUndefined();
+  });
+
+  it('光源字段损坏时仅忽略该字段，方案照常恢复', () => {
+    const storage = new MemoryStorage();
+    const brokenLightSources: unknown[] = [
+      '#BADHEX',
+      '#FFF',
+      12345,
+      null,
+      { hex: '#A0C8FF' },
+    ];
+
+    for (const broken of brokenLightSources) {
+      storage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ ...makeScheme([makeLayer(1)]), lightSource: broken }),
+      );
+      const loaded = loadScheme(storage);
+      expect(loaded?.layers).toEqual([makeLayer(1)]);
+      expect(loaded?.lightSource).toBeUndefined();
+    }
+  });
+
+  it('基准快照携带光源，并按该光源校验结果一致性', () => {
+    const storage = new MemoryStorage();
+    const baselineLayers = [makeLayer(1), makeLayer(2)];
+    const baseline: BaselineSnapshot = {
+      savedAt: '2026-09-12T01:00:00.000Z',
+      layers: baselineLayers,
+      lightSource: asHexColor('#A0C8FF'),
+      result: calculateStack(baselineLayers, asHexColor('#A0C8FF')),
+    };
+
+    saveScheme(
+      storage,
+      [makeLayer(3)],
+      '2026-09-12T00:00:00.000Z',
+      baseline,
+      asHexColor('#A0C8FF'),
+    );
+    const loaded = loadScheme(storage);
+    expect(loaded?.lightSource).toBe('#A0C8FF');
+    expect(loaded?.baseline).toEqual(baseline);
+  });
+
+  it('基准结果与其光源矛盾时只忽略基准，方案照常恢复', () => {
+    const storage = new MemoryStorage();
+    const baselineLayers = [makeLayer(1), makeLayer(2)];
+    // 快照声称光源是 #A0C8FF，结果却是白光下的计算值
+    const mismatched: BaselineSnapshot = {
+      savedAt: '2026-09-12T01:00:00.000Z',
+      layers: baselineLayers,
+      lightSource: asHexColor('#A0C8FF'),
+      result: calculateStack(baselineLayers),
+    };
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...makeScheme([makeLayer(3)]), baseline: mismatched }),
+    );
+
+    const loaded = loadScheme(storage);
+    expect(loaded?.layers).toEqual([makeLayer(3)]);
+    expect(loaded?.baseline).toBeUndefined();
+  });
+
+  it('旧基准没有光源字段时按白光校验并恢复', () => {
+    const storage = new MemoryStorage();
+    const baselineLayers = [makeLayer(1), makeLayer(2)];
+    const legacyBaseline = {
+      savedAt: '2026-09-12T01:00:00.000Z',
+      layers: baselineLayers,
+      result: calculateStack(baselineLayers),
+    };
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...makeScheme([makeLayer(3)]), baseline: legacyBaseline }),
+    );
+
+    const loaded = loadScheme(storage);
+    expect(loaded?.baseline).toEqual(legacyBaseline);
+  });
+
+  it('基准光源字段损坏时只忽略基准', () => {
+    const storage = new MemoryStorage();
+    const baseline = { ...makeBaseline(2), lightSource: '#BADHEX' };
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...makeScheme([makeLayer(1)]), baseline }),
+    );
+
+    const loaded = loadScheme(storage);
+    expect(loaded?.layers).toEqual([makeLayer(1)]);
+    expect(loaded?.baseline).toBeUndefined();
+  });
+});
+
 describe('基准快照存储', () => {
   it('基准随最近有效方案一起写入并恢复', () => {
     const storage = new MemoryStorage();
