@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { CATALOG } from './catalog';
-import { calculateStack, normalizeHex, parseTransmittance } from './color';
-import { loadScheme, saveScheme, STORAGE_KEY } from './storage';
-import type { Gel, StackLayer, StackResult } from './types';
+import {
+  calculateStack,
+  compareWithBaseline,
+  normalizeHex,
+  parseTransmittance,
+} from './color';
+import {
+  clearStoredBaseline,
+  loadScheme,
+  saveScheme,
+  STORAGE_KEY,
+} from './storage';
+import type {
+  BaselineSnapshot,
+  Gel,
+  StackLayer,
+  StackResult,
+} from './types';
 import './styles.css';
 
 type DragSource =
@@ -41,6 +56,9 @@ function App() {
   const [layers, setLayers] = useState<StackLayer[]>(
     () => initialScheme?.layers ?? [],
   );
+  const [baseline, setBaseline] = useState<BaselineSnapshot | null>(
+    () => initialScheme?.baseline ?? null,
+  );
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -61,11 +79,11 @@ function App() {
     const storage = getBrowserStorage();
     if (!storage) return;
     try {
-      saveScheme(storage, layers);
+      saveScheme(storage, layers, undefined, baseline);
     } catch {
       setNotice('浏览器无法写入 localStorage，本次方案暂时不能自动保存。');
     }
-  }, [layers]);
+  }, [layers, baseline]);
 
   useEffect(() => {
     document.body.classList.toggle('is-dragging', dragging !== null);
@@ -168,6 +186,37 @@ function App() {
     if (layers.length === 0) return null;
     return calculateStack(layers);
   }, [layers]);
+
+  const comparison = useMemo(() => {
+    if (!baseline || !result) return null;
+    return compareWithBaseline(baseline.result, result);
+  }, [baseline, result]);
+
+  function handleSetBaseline() {
+    if (!result) {
+      setNotice('预检台为空，无法设为基准；已确认的基准保持不变。');
+      return;
+    }
+    setBaseline({
+      savedAt: new Date().toISOString(),
+      layers: layers.map((layer) => ({ ...layer })),
+      result,
+    });
+    setNotice('已设为基准，继续调整一至五层色片即可查看对比。');
+  }
+
+  function handleClearBaseline() {
+    setBaseline(null);
+    const storage = getBrowserStorage();
+    if (storage) {
+      try {
+        clearStoredBaseline(storage);
+      } catch {
+        // 内存中的基准已清除，存储清理失败不影响本次操作。
+      }
+    }
+    setNotice('已清除基准，回到单方案预检。');
+  }
 
   function beginDrag(
     event: ReactPointerEvent<HTMLElement>,
@@ -452,20 +501,67 @@ function App() {
         </section>
 
         <aside className="panel result-panel" aria-labelledby="result-title">
-          <div className="panel-heading">
-            <h2 id="result-title">预检结果</h2>
-            <p>按题目指定 sRGB 线性空间逐通道计算</p>
+          <div className="panel-heading horizontal-heading">
+            <div>
+              <h2 id="result-title">预检结果</h2>
+              <p>按题目指定 sRGB 线性空间逐通道计算</p>
+            </div>
+            <div className="baseline-actions">
+              <button
+                type="button"
+                className="mini-button"
+                onClick={handleSetBaseline}
+                data-testid="set-baseline"
+              >
+                设为基准
+              </button>
+              {baseline && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={handleClearBaseline}
+                  data-testid="clear-baseline"
+                >
+                  清除基准
+                </button>
+              )}
+            </div>
           </div>
 
           {result ? (
             <>
-              <div
-                className="final-swatch"
-                style={{ backgroundColor: result.hex }}
-                role="img"
-                aria-label={`最终色块 ${result.hex}`}
-                data-testid="final-swatch"
-              />
+              {baseline && comparison ? (
+                <div className="compare-swatches" data-testid="compare-swatches">
+                  <figure className="compare-figure">
+                    <div
+                      className="final-swatch compare-swatch"
+                      style={{ backgroundColor: baseline.result.hex }}
+                      role="img"
+                      aria-label={`基准色块 ${baseline.result.hex}`}
+                      data-testid="baseline-swatch"
+                    />
+                    <figcaption>基准 {baseline.result.hex}</figcaption>
+                  </figure>
+                  <figure className="compare-figure">
+                    <div
+                      className="final-swatch compare-swatch"
+                      style={{ backgroundColor: result.hex }}
+                      role="img"
+                      aria-label={`当前色块 ${result.hex}`}
+                      data-testid="final-swatch"
+                    />
+                    <figcaption>当前 {result.hex}</figcaption>
+                  </figure>
+                </div>
+              ) : (
+                <div
+                  className="final-swatch"
+                  style={{ backgroundColor: result.hex }}
+                  role="img"
+                  aria-label={`最终色块 ${result.hex}`}
+                  data-testid="final-swatch"
+                />
+              )}
               <dl className="result-list">
                 <div>
                   <dt>最终颜色</dt>
@@ -496,11 +592,71 @@ function App() {
                     </span>
                   </dd>
                 </div>
+                {baseline && comparison && (
+                  <>
+                    <div>
+                      <dt>颜色差 ΔE76</dt>
+                      <dd data-testid="color-difference">
+                        {comparison.colorDifference.toFixed(1)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>亮度差</dt>
+                      <dd data-testid="transmittance-difference">
+                        {comparison.transmittanceDifference.toFixed(1)} 个百分点
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>替代结论</dt>
+                      <dd>
+                        <span
+                          className={`conclusion ${
+                            comparison.verdict === '可替代'
+                              ? 'substitutable'
+                              : 'deviating'
+                          }`}
+                          data-testid="comparison-verdict"
+                        >
+                          {comparison.verdict}
+                        </span>
+                      </dd>
+                    </div>
+                  </>
+                )}
               </dl>
               <p className="formula-note">
                 判定线：综合透光率四舍五入到 0.1% 后，不低于 20.0% 为可用，否则为过暗。
               </p>
+              {baseline && comparison && (
+                <p className="formula-note">
+                  替代判定：颜色差（Delta E 76）不超过 8 且亮度差不超过 5.0
+                  个百分点为可替代，否则偏差明显。
+                </p>
+              )}
             </>
+          ) : baseline ? (
+            <div className="empty-result" data-testid="empty-result">
+              <div className="compare-swatches">
+                <figure className="compare-figure">
+                  <div
+                    className="final-swatch compare-swatch"
+                    style={{ backgroundColor: baseline.result.hex }}
+                    role="img"
+                    aria-label={`基准色块 ${baseline.result.hex}`}
+                    data-testid="baseline-swatch"
+                  />
+                  <figcaption>基准 {baseline.result.hex}</figcaption>
+                </figure>
+                <figure className="compare-figure">
+                  <div
+                    className="placeholder-swatch compare-swatch"
+                    aria-hidden="true"
+                  />
+                  <figcaption>当前 空</figcaption>
+                </figure>
+              </div>
+              <p>基准已建立，当前预检台为空；放入色片后显示对比。</p>
+            </div>
           ) : (
             <div className="empty-result" data-testid="empty-result">
               <div className="placeholder-swatch" aria-hidden="true" />

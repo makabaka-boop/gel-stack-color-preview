@@ -447,6 +447,45 @@ h3 {
   background: #ff8c8c;
 }
 
+.conclusion.substitutable {
+  color: #0c3d23;
+  background: #72e3a5;
+}
+
+.conclusion.deviating {
+  color: #452104;
+  background: #ffb26b;
+}
+
+.baseline-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.compare-swatches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.compare-figure {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.compare-figure figcaption {
+  color: #aab1bf;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.compare-swatch {
+  height: 120px;
+}
+
 .formula-note,
 .storage-note {
   color: #9ca3b3;

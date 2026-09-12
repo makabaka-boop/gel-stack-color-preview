@@ -1,7 +1,9 @@
 import { asHexColor, asTransmittance } from './types';
 import type {
   HexColor,
+  LabValue,
   RgbValue,
+  SchemeComparison,
   StackLayer,
   StackResult,
   Transmittance,
@@ -117,4 +119,60 @@ export function calculateStack(layers: readonly StackLayer[]): StackResult {
     transmittancePercent,
     conclusion: transmittancePercent >= 20.0 ? '可用' : '过暗',
   };
+}
+
+const D65_WHITE = { x: 0.95047, y: 1, z: 1.08883 } as const;
+const LAB_DELTA = 6 / 29;
+
+function labPivot(value: number): number {
+  if (value > LAB_DELTA ** 3) {
+    return Math.cbrt(value);
+  }
+  return value / (3 * LAB_DELTA ** 2) + 4 / 29;
+}
+
+export function hexToLab(hex: HexColor): LabValue {
+  const [r, g, b] = hexToRgb(normalizeHex(hex)).map(srgbToLinear);
+
+  const x = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
+  const y = 0.2126729 * r + 0.7151522 * g + 0.072175 * b;
+  const z = 0.0193339 * r + 0.119192 * g + 0.9503041 * b;
+
+  const fx = labPivot(x / D65_WHITE.x);
+  const fy = labPivot(y / D65_WHITE.y);
+  const fz = labPivot(z / D65_WHITE.z);
+
+  return {
+    l: 116 * fy - 16,
+    a: 500 * (fx - fy),
+    b: 200 * (fy - fz),
+  };
+}
+
+export function deltaE76(first: LabValue, second: LabValue): number {
+  return Math.hypot(first.l - second.l, first.a - second.a, first.b - second.b);
+}
+
+export const COLOR_DIFFERENCE_LIMIT = 8;
+export const TRANSMITTANCE_DIFFERENCE_LIMIT = 5.0;
+
+export function compareWithBaseline(
+  baseline: StackResult,
+  current: StackResult,
+): SchemeComparison {
+  const colorDifference = deltaE76(
+    hexToLab(baseline.hex),
+    hexToLab(current.hex),
+  );
+  const transmittanceDifference = Math.abs(
+    baseline.transmittancePercent - current.transmittancePercent,
+  );
+
+  const verdict =
+    colorDifference <= COLOR_DIFFERENCE_LIMIT &&
+    transmittanceDifference <= TRANSMITTANCE_DIFFERENCE_LIMIT
+      ? '可替代'
+      : '偏差明显';
+
+  return { colorDifference, transmittanceDifference, verdict };
 }
