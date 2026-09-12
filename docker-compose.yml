@@ -1,0 +1,24 @@
+services:
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  verify:
+    build:
+      context: .
+      target: verify
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      BASE_URL: http://web/
+      CI: "true"
+    command: ["npm", "run", "verify"]
